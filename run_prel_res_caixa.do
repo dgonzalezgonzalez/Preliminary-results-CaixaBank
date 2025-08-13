@@ -58,6 +58,18 @@ reshape long $vars, i(ine) j(wave)
 label define wave 1 "Wave Dec. 2024" 2 "Wave Jan. 2025" 3 "Wave Feb. 2025" 4 "Wave Mar. 2025" 5 "Wave Apr. 2025" 6 "Wave May 2025" 7 "Wave Jun. 2025" // Change if wanted, not necessary for estimations.
 label values wave wave
 
+global wavelist
+global wavelist_lab
+sum wave
+local max_w=r(max)
+forvalues n=2(1)`max_w' {
+	global wavelist $wavelist `n'.wave#c.treat1 `n'.wave#c.treat2
+}
+forvalues n=2(1)`max_w' {
+	local m=`n'-1
+	global wavelist_lab $wavelist_lab `n'.wave#c.treat1 "Tratado (doble ofibus) \times I(\text{mes}=`m')" `n'.wave#c.treat2 "Tratado (información) \times I(\text{mes}=`m')"
+}
+
 rename asignación asignacion
 replace asignacion="Primera ronda formación" if asignacion=="1ª ronda formación Nov'24"
 replace asignacion="Segunda ronda formación" if asignacion=="2ª ronda formación Feb'25"
@@ -86,8 +98,8 @@ gen reintegros_mean=m/reintegros
 gen ingresos_mean=o/ingresos
 gen traspasos_mean=s/traspasos
 gen cheqaj_mean=ac/chequesajenos
-gen transferencias_mean=ae/transferencias
-gen reintegros_caj_mean=ao/an
+gen trans_mean=ae/transferencias
+gen rntg_caj_mean=ao/an
 gen resto_caj_mean=au/restooperaciones
 
 save "$wd\data\output_merged.dta", replace
@@ -217,6 +229,78 @@ file write table _n
 file close table
 
 * Preliminary regressions (all months):
+sum wave
+local max_w=r(max)
+local max_w_1=`max_w'-1
+foreach y in $vars1 $vars2 reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	preserve
+	reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave, vce(cluster ine)
+	estimates store model
+	matrix list e(b)
+	postfile lincom_results_`y' year coefficient lower upper type using "$wd\data\lincom_results_`y'.dta", replace
+	foreach m of numlist 1/`max_w' {
+		local l=`m'-1
+		lincom c.treat1#`m'.wave, level(95)
+		post lincom_results_`y' (`l'-0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (1)
+		lincom c.treat2#`m'.wave, level(95)
+		post lincom_results_`y' (`l'+0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (0)
+	}
+	postclose lincom_results_`y'
+	use "$wd\data\lincom_results_`y'.dta", clear
+	twoway (scatter coefficient year if type == 1, mcolor(stc1)) ///
+		   (rcap lower upper year if type == 1, lcolor(stc1)) ///
+		   (scatter coefficient year if type == 0, mcolor(stc2)) ///
+		   (rcap lower upper year if type == 0, lcolor(stc2)), ///
+		   xlabel(0(1)`max_w_1') ylabel(, angle(horizontal)) ///
+		   ytitle("Coeficiente") ///
+		   xti("Meses desde inicio del programa") legend(order(1 "Tratado (doble ofibus)" 3 "Tratado (información)") position(6)) yline(0, lp(dash))
+	graph export "$wd\output\dynamic_fx_`y'.png", replace
+	restore
+}
+foreach y in $vars1 $vars2 reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	erase "$wd\data\lincom_results_`y'.dta"
+}
+
+/*sum wave
+local max_w=r(max)
+local max_w_1=`max_w'-1
+foreach y in $vars1 $vars2 reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	preserve
+	reg `y' c.treat1##i.wave c.treat2##i.wave, vce(cluster ine)
+	estimates store model
+	matrix list e(b)
+	postfile lincom_results_`y' year coefficient lower upper type using "$wd\data\lincom_results_`y'.dta", replace
+	foreach m of numlist 1/`max_w' {
+		if `m'==1 {
+			local l=`m'-1
+			lincom treat1, level(95)
+			post lincom_results_`y' (`l'-0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (1)
+			lincom treat2, level(95)
+			post lincom_results_`y' (`l'+0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (0)
+		}
+		else {
+			local l=`m'-1
+			lincom treat1+c.treat1#`m'.wave, level(95)
+			post lincom_results_`y' (`l'-0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (1)
+			lincom treat2+c.treat2#`m'.wave, level(95)
+			post lincom_results_`y' (`l'+0.15) (`r(estimate)') (`r(lb)') (`r(ub)') (0)
+		}
+	}
+	postclose lincom_results_`y'
+	use "$wd\data\lincom_results_`y'.dta", clear
+	twoway (scatter coefficient year if type == 1, mcolor(stc1)) ///
+		   (rcap lower upper year if type == 1, lcolor(stc1)) ///
+		   (scatter coefficient year if type == 0, mcolor(stc2)) ///
+		   (rcap lower upper year if type == 0, lcolor(stc2)), ///
+		   xlabel(0(1)`max_w_1') ylabel(, angle(horizontal)) ///
+		   ytitle("Coeficiente") ///
+		   xti("Meses desde inicio del programa") legend(order(1 "Tratado (doble ofibus)" 3 "Tratado (información)") position(6)) yline(0, lp(dash))
+	graph export "$wd\output\dynamic_fx_`y'.png", replace
+	restore
+}
+foreach y in $vars1 $vars2 reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	erase "$wd\data\lincom_results_`y'.dta"
+}*/
 
 foreach y in $vars {
 	reg `y' treat1 treat2 i.wave, vce(cluster ine)
@@ -246,6 +330,24 @@ esttab using "${wd}\output\reg1.tex", mti("\begin{tabular}[c]{@{}c@{}} Personas\
 eststo clear
 
 local nvars=0
+foreach y in $vars1 {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "No"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg11.tex", mti("\begin{tabular}[c]{@{}c@{}} Personas\\atendidas (\#)\end{tabular}" "Reintegros (\#)" "Reintegros (\euro)" "Ingresos (\#)" "Ingresos (\euro)" "Traspasos (\#)" "Traspasos (\euro)" "\begin{tabular}[c]{@{}c@{}} Cheques\\propios (\#)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Cheques\\propios (\euro)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos (\#)\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera \label{reg11}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{`nvars'}{c}{ARE} \\\cmidrule(lr){2-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
+
+eststo clear
+
+local nvars=0
 foreach y in $vars2 {
 	eststo: reg `y' treat1 treat2 i.wave, vce(cluster ine)
 	estadd local mfe "S\'i"
@@ -262,7 +364,25 @@ esttab using "${wd}\output\reg2.tex", mti("\begin{tabular}[c]{@{}c@{}} Cheques\\
 
 eststo clear
 
-foreach y in reintegros_mean ingresos_mean traspasos_mean cheqaj_mean transferencias_mean reintegros_caj_mean resto_caj_mean {
+local nvars=0
+foreach y in $vars2 {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "No"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg21.tex", mti("\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos (\euro)\end{tabular}" "Transferencias (\#)" "Transferencias (\euro)" "Resto (\#)" "\begin{tabular}[c]{@{}c@{}} Personas\\atendidas (\#)\end{tabular}" "Reintegros (\#)" "Reintegros (\euro)" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\#)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\euro)\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera (continuado) \label{reg21}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{4}{c}{ARE} &\multicolumn{5}{c}{Cajero} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
+
+eststo clear
+
+foreach y in reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
 	eststo: reg `y' treat1 treat2 i.wave, vce(cluster ine)
 	estadd local mfe "S\'i"
 	sum `y' if treat1==0 & treat2==0 & e(sample)==1
@@ -273,6 +393,24 @@ foreach y in reintegros_mean ingresos_mean traspasos_mean cheqaj_mean transferen
 }
 
 esttab using "${wd}\output\reg3.tex", title("Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on (\euro/\#) \label{reg3}") mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") addnote("Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.") compress substitute("[htbp]" "[H]") // Note that mgourps(., pattern(.)) might have to be changed manually if different variables are selected.
+
+eststo clear
+
+local nvars=0
+foreach y in reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "No"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg31.tex", title("") mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on (\euro/\#) \label{reg31}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{4}{c}{ARE} &\multicolumn{3}{c}{Cajero} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
 
 eststo clear
 
@@ -397,7 +535,7 @@ eststo clear
 
 local nvars=0
 forvalues m=1(1)`max' {
-	foreach y in reintegros_mean ingresos_mean cheqaj_mean transferencias_mean reintegros_caj_mean resto_caj_mean {
+	foreach y in reintegros_mean ingresos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
 		eststo `y'_`m': reg `y' treat1 treat2 if wave==`m', vce(cluster ine)
 		sum `y' if treat1==0 & treat2==0 & e(sample)==1 & wave==`m'
 		estadd local avg=string(r(mean),"%15.3fc")
@@ -421,31 +559,31 @@ forvalues m=1(1)`max' { // Note that mgourps(., pattern(.)) might have to be cha
 	if `m'==1 local new = 0
 	if `m'<4 {
 		if `last'==1 & `m'==1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table})
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table})
 		}
 		if `m'==1 & `last'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'})
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'})
 		}
 		if `last'==0 & `m'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) append
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) append
 		}
 		if `last'==1 & `m'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table}) append
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table}) append
 		}
 	}
 	else {
 		local k=floor((`m'-1)/3)
 		if `last'==1 & `new'==1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6`k'}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table})
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6`k'}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table})
 		}
 		if `new'==1 & `last'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6`k'}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'})
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on por mes (\euro/\#) \label{reg6`k'}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline\\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'})
 		}
 		if `last'==0 & `new'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) append
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars1'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) append
 		}
 		if `last'==1 & `new'!=1 {
-			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' transferencias_mean_`m' reintegros_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table}) append
+			esttab reintegros_mean_`m' ingresos_mean_`m' cheqaj_mean_`m' trans_mean_`m' rntg_caj_mean_`m' resto_caj_mean_`m' using "${wd}\output\reg6`k'.tex", fragment mgroups("ARE" "Cajero", pattern(1 0 0 0 0 1 0)prefix(\multicolumn{@span}{c}{) suffix(}) span erepeat(\cmidrule(lr){@span})) mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\hline\hline & & & & & & \\ \multicolumn{`nvars'}{l}{\textbf{Panel `letra': `mes' `anio'}} \\\cmidrule(lr){1-`nvars1'}) postfoot(\hline\hline\multicolumn{`nvars1'}{l}{\footnotesize Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\\end{tabular}}\end{table}) append
 		}
 	}
 }
@@ -471,4 +609,146 @@ replace observaciones_cxb="El Municipio renunció al servicio y no está en el p
 replace observaciones_cxb="La segunda ruta Peramola y Alos de Balaguer se desestimó por apenas tener potenciales usuarios y ser ineficiente desde el punto de vista de los tiempos, kilometraje y recursos disponibles" if ine==25022 | ine==25165
 replace observaciones_cxb="Renunció al servicio, pero recientemente recitifica e incluiremos en el servicio a partir del mes de marzo" if ine==43084
 
+encode entidadúltimapresencia, gen(ent_pres)
+encode entidadagentefinancieroactual, gen(ent_agent)
+gen treat=1
+replace treat=0 if asignacion=="Control" | (asignacion=="Segunda ronda formación" & wave<3)
+gen treat1=1 if asignacion=="doble ofibus"
+replace treat1=0 if asignacion=="Control" | asignacion=="Segunda ronda formación" | asignacion=="Primera ronda formación"
+gen treat2=1 if asignacion=="Primera ronda formación" | (asignacion=="Segunda ronda formación" & wave>=3)
+replace treat2=0 if asignacion=="Control" | (asignacion=="Segunda ronda formación" & wave<3) | asignacion=="doble ofibus"
+
+global xlist habitantes clientescbk clientescbk65años distanciam i.ent_pres agentesfinancieroscompetencia i.ent_agent
+
+label variable habitantes "Tamaño poblacional"
+label variable clientescbk "Clientes de CaixaBank"
+label variable clientescbk65años "Clientes de CaixaBank mayores de 65 años"
+label variable distanciam "Distancia al cajero más cercano"
+label variable agentesfinancieroscompetencia "Agentes financieros de otras entidades"
+
 save "$wd\data\output_merged.dta", replace
+
+* Balance of covariates:
+
+file close _all
+file open table using "${wd}\output\balance.tex", write replace
+
+file write table "\begin{table}[H]\centering"
+file write table _n
+file write table "\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}"
+file write table _n
+file write table "\caption{Balance de variables de control \label{balance}}"
+file write table _n
+file write table "\scalebox{0.8}{\begin{tabular}{lccccccc}"
+file write table _n
+file write table "\hline\hline"
+file write table _n
+file write table " & Media (tratados) & Media (controles) & SD & Min. & Max. & $ p$-value (T-C) & $ N$ \\"
+file write table _n
+file write table "\hline"
+file write table _n
+
+foreach var in habitantes clientescbk clientescbk65años distanciam agentesfinancieroscompetencia {
+	local v`var' : variable label `var'
+    file write table "`v`var'' & "
+    
+    // Tratados
+    sum `var' if treat == 1
+    file write table (string(r(mean),"%15.3fc")) " & "
+    
+    // Controles
+    sum `var' if treat == 0
+    file write table (string(r(mean),"%15.3fc")) " & "
+	
+	// Todos
+    sum `var'
+    file write table (string(r(sd),"%15.3fc")) " & "	
+    file write table "`r(min)' & "	
+    file write table "`r(max)' & "	
+   
+    // p-value
+    reg `var' treat, robust
+    test treat
+    local pval = r(p)
+    
+    local sig ""
+    if `pval'<.1 local sig "*"
+    if `pval'<.05 local sig "**"
+    if `pval'<.01 local sig "***"
+    
+    file write table (string(r(p),"%15.3fc")) "`sig'" " & "
+ 	
+	// N
+    sum `var'
+    file write table "`r(N)' \\ "	
+   file write table _n
+}
+
+file write table "\hline\hline"
+file write table _n
+
+file write table _n
+file write table "\multicolumn{4}{l}{\footnotesize Notas: Errores est\'andar robustos en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$.}\\"
+file write table _n
+file write table "\end{tabular}}"
+file write table _n
+file write table "\end{table}"
+file write table _n
+
+file close table
+
+/// Regressions with controls:
+
+local nvars=0
+foreach y in $vars1 {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave $xlist, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "S\'i"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg12.tex", mti("\begin{tabular}[c]{@{}c@{}} Personas\\atendidas (\#)\end{tabular}" "Reintegros (\#)" "Reintegros (\euro)" "Ingresos (\#)" "Ingresos (\euro)" "Traspasos (\#)" "Traspasos (\euro)" "\begin{tabular}[c]{@{}c@{}} Cheques\\propios (\#)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Cheques\\propios (\euro)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos (\#)\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera \label{reg12}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{`nvars'}{c}{ARE} \\\cmidrule(lr){2-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
+
+eststo clear
+
+local nvars=0
+foreach y in $vars2 {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave $xlist, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "S\'i"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg22.tex", mti("\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos (\euro)\end{tabular}" "Transferencias (\#)" "Transferencias (\euro)" "Resto (\#)" "\begin{tabular}[c]{@{}c@{}} Personas\\atendidas (\#)\end{tabular}" "Reintegros (\#)" "Reintegros (\euro)" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\#)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\euro)\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera (continuado) \label{reg22}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{4}{c}{ARE} &\multicolumn{5}{c}{Cajero} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
+
+eststo clear
+
+local nvars=0
+foreach y in reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean {
+	eststo: reg `y' c.treat1##ib(1).wave c.treat2##ib(1).wave $xlist, vce(cluster ine)
+	estadd local mfe "S\'i"
+	estadd local controls "S\'i"
+	sum `y' if treat1==0 & treat2==0 & e(sample)==1
+	estadd local avg=string(r(mean),"%15.3fc")
+	estadd local sd=string(r(sd),"%15.3fc")
+	estadd local b1_sd=string(_b[treat1]/r(sd),"%15.3fc")
+	estadd local b2_sd=string(_b[treat2]/r(sd),"%15.3fc")
+	local ++nvars
+}
+local nvars1=`nvars'+1
+
+esttab using "${wd}\output\reg32.tex", title("") mti("Reintegros" "Ingresos" "Traspasos" "\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos\end{tabular}" "Transferencias" "Reintegros" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)" $wavelist_lab) keep(treat1 treat2 $wavelist) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on (\euro/\#) \label{reg32}}\scalebox{0.65}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline &\multicolumn{4}{c}{ARE} &\multicolumn{3}{c}{Cajero} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen tamaño poblacional, número de clientes de CaixaBank, número de clientes de CaixaBank mayores de 65 años, distancia al cajero más cercano, entidad de última presencia, agentes financieros de otras entidades, y entidad de los agentes financieros. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
+
+eststo clear
