@@ -29,6 +29,121 @@ foreach archivo of local archivos {
 local max = `num'
 cd "$wd"
 
+local months "Dic'24 _Ene'25 _Feb'25 _Mar'25 _Abr25 _May25"
+if `max'<202502 local months "Dic _Ene"
+local n=1
+foreach month of local months {
+	capture {
+		import excel "$wd\data\Informe GenCAT `max'_sent.xlsx", sheet("Calendario`month'") firstrow case(lower) clear
+		if "`month'"!="_May25" {
+			rename codiine ine
+		}
+		rename ofibús ofibus
+		keep ine ofibus horadinici fin tiempodeatención diadepas
+		gen j=.
+		levelsof (ine), local (ine_values)
+		foreach val of local ine_values {
+			sum diadepas if ine==`val'
+			if r(min)==r(max) {
+				replace j=1 if ine==`val'
+			}
+			else {
+				replace j=1 if ine==`val' & diadepas==r(min)
+				replace j=2 if ine==`val' & diadepas==r(max)
+			}
+		}
+		missings dropobs, force
+		reshape wide ofibus horadinici fin tiempodeatención diadepas, i(ine) j(j)
+		gen wave=`n'
+		save "$wd\data\ofibus_`n'.dta", replace
+		local ++n
+	}
+	if _rc!=0 {
+		continue
+		local ++n
+	}
+}
+
+local periodos1
+foreach archivo of local archivos {
+	local num = substr("`archivo'", 16, 6)
+	if `num'>=202506 local periodos1 `periodos1' `num'
+}
+local max1 = `num'
+
+foreach month of local periodos1 { // This loop will only work if all ofibus-related sheets after May 2025 are provided in the same format every month. Otherwise, the code should be changed.
+	local anio = substr("`month'", 3, 2)
+	local mesnum = substr("`month'", 5, 2)
+	local mes = word("Ene Feb Mar Abr May Jun Jul Ago Sep Oct Nov Dic", `mesnum')
+	import excel "$wd\data\Informe GenCAT `month'_sent.xlsx", sheet("Calendario_`mes'`anio'") firstrow case(lower) clear
+	rename cod_ine ine
+	rename hora_inicio_operacion horadinici
+	rename hora_fin fin
+	rename tiempo_de_atencion tiempodeatención
+	rename dia_de_pase diadepas
+	keep ine ofibus horadinici fin tiempodeatención diadepas
+	gen j=.
+	levelsof (ine), local (ine_values)
+	foreach val of local ine_values {
+		sum diadepas if ine==`val'
+		if r(min)==r(max) {
+			replace j=1 if ine==`val'
+		}
+		else {
+			replace j=1 if ine==`val' & diadepas==r(min)
+			replace j=2 if ine==`val' & diadepas==r(max)
+		}
+	}
+	missings dropobs, force
+	reshape wide ofibus horadinici fin tiempodeatención diadepas, i(ine) j(j)
+	gen wave=`n'
+	capture {
+		foreach var in horadinici1 fin1 horadinici2 fin2 {
+			gen `var'_num=clock(`var', "hm")
+			format `var'_num %tcHH:MM
+			drop `var'
+			rename `var'_num `var'
+		}
+	}
+	if _rc!=0 {
+		save "$wd\data\ofibus_`n'.dta", replace
+		local ++n
+		continue
+	}
+	save "$wd\data\ofibus_`n'.dta", replace
+	local ++n
+}
+
+use "$wd\data\ofibus_1.dta", clear
+local n1=`n'-1
+forvalues i=2(1)`n1' {
+	append using "$wd\data\ofibus_`i'.dta"
+}
+
+save "$wd\data\ofibus_merged.dta", replace
+
+import excel "Q:\PIFIN\CaixaBank\Diego\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Nov'24") cellrange(B2:K22) firstrow case(lower) clear
+
+rename codmunine ine
+rename asistentes asistentes1
+label variable asistentes1 "Asistentes formación Nov. 2024"
+keep ine asistentes1
+	missings dropobs, force
+save "$wd\data\info_1.dta", replace
+
+if `max'>=202502 {
+	import excel "Q:\PIFIN\CaixaBank\Diego\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Feb25") cellrange(B2:K17) firstrow case(lower) clear
+
+	rename codmunicine ine
+	rename asistentes asistentes2
+	label variable asistentes2 "Asistentes formación Feb. 2025"
+	keep ine asistentes2
+	missings dropobs, force
+	save "$wd\data\info_2.dta", replace
+}
+
+clear all
+
 local i=1
 foreach n of local periodos {
 	import excel "$wd\data\Informe GenCAT `max'_sent.xlsx", sheet("OUTPUT_`n'") cellrange(B7:AU169) firstrow case(lower)
@@ -60,6 +175,10 @@ reshape long $vars, i(ine) j(wave)
 
 label define wave 1 "Wave Dec. 2024" 2 "Wave Jan. 2025" 3 "Wave Feb. 2025" 4 "Wave Mar. 2025" 5 "Wave Apr. 2025" 6 "Wave May 2025" 7 "Wave Jun. 2025" 8 "Wave Jul. 2025" 9 "Wave Aug. 2025" // Change if wanted, not necessary for estimations.
 label values wave wave
+
+merge 1:1 ine wave using "$wd\data\ofibus_merged.dta", nogen
+merge m:1 ine using "$wd\data\info_1.dta", nogen
+merge m:1 ine using "$wd\data\info_2.dta", nogen
 
 sum wave
 local max_w=r(max)
