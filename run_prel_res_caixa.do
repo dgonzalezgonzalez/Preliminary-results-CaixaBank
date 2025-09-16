@@ -122,7 +122,7 @@ forvalues i=2(1)`n1' {
 
 save "$wd\data\ofibus_merged.dta", replace
 
-import excel "Q:\PIFIN\CaixaBank\Diego\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Nov'24") cellrange(B2:K22) firstrow case(lower) clear
+import excel "$wd\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Nov'24") cellrange(B2:K22) firstrow case(lower) clear
 
 rename codmunine ine
 rename asistentes asistentes1
@@ -132,7 +132,7 @@ keep ine asistentes1
 save "$wd\data\info_1.dta", replace
 
 if `max'>=202502 {
-	import excel "Q:\PIFIN\CaixaBank\Diego\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Feb25") cellrange(B2:K17) firstrow case(lower) clear
+	import excel "$wd\data\Informe GenCAT 202508_sent.xlsx", sheet("Formación_Feb25") cellrange(B2:K17) firstrow case(lower) clear
 
 	rename codmunicine ine
 	rename asistentes asistentes2
@@ -1569,3 +1569,4 @@ local nvars1=`nvars'+1
 esttab using "${wd}\output\reg10.tex", mti("Todos" "Todos" ">65 años" ">65 años" "Todos" "Todos" ">65 años" ">65 años") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en número de clientes \label{reg10}} \begin{tabular}{l*{`nvars'}{c}}\hline\hline & \multicolumn{4}{c}{Total de clientes}& \multicolumn{4}{c}{Clientes por habitantes >18 años} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen los mostrados en la Tabla \ref{balance} a excepción de \textit{Clientes CaixaBank} y \textit{Clientes CaixaBank (>65 años)}. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
 
 eststo clear
+
