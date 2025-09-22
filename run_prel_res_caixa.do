@@ -205,24 +205,26 @@ rename asignación asignacion
 replace asignacion="Primera ronda formación" if asignacion=="1ª ronda formación Nov'24"
 replace asignacion="Segunda ronda formación" if asignacion=="2ª ronda formación Feb'25"
 
-label variable personasatendidas "Personas atendidas (\#)"
+label variable personasatendidas "Personas atendidas (\#) ARE"
 label variable reintegros "Reintegros (\#)"
-label variable m "Reintegros (\euro)"
-label variable ingresos "Ingresos (\#)"
-label variable o "Ingresos (\euro)"
-label variable traspasos "Traspasos (\#)"
-label variable s "Traspasos (\euro)"
-label variable chequespropios "Cheques propios (\#)"
-label variable y "Cheques propios (\euro)"
-label variable chequesajenos "Cheques ajenos (\#)"
-label variable ac "Cheques ajenos (\euro)"
-label variable transferencias "Transferencias (\#)"
-label variable ae "Transferencias (\euro)"
-label variable resto "Resto (\#)"
-label variable persatendidas "Personas atendidas (\#)"
-label variable an "Reintegros (\#)"
-label variable ao "Reintegros (\euro)"
-label variable restooperaciones "Resto operaciones (\#)"
+label variable m "Reintegros (\euro) ARE"
+label variable ingresos "Ingresos (\#) ARE"
+label variable o "Ingresos (\euro) ARE"
+label variable traspasos "Traspasos (\#) ARE "
+label variable ar "Traspasos (\#) Cajero "
+label variable s "Traspasos (\euro) ARE"
+label variable as "Traspasos (\euro) Cajero"
+label variable chequespropios "Cheques propios (\#) ARE"
+label variable y "Cheques propios (\euro) ARE"
+label variable chequesajenos "Cheques ajenos (\#) ARE"
+label variable ac "Cheques ajenos (\euro) ARE"
+label variable transferencias "Transferencias (\#) ARE"
+label variable ae "Transferencias (\euro) ARE"
+label variable resto "Resto (\#) ARE"
+label variable persatendidas "Personas atendidas (\#) Cajero"
+label variable an "Reintegros (\#) Cajero"
+label variable ao "Reintegros (\euro) Cajero"
+label variable restooperaciones "Resto operaciones (\#) Cajero"
 label variable au "Resto operaciones (\euro)"
 
 gen reintegros_mean=m/reintegros
@@ -250,10 +252,13 @@ gen rest_e_tot=au
 foreach y in reint ingr tras check trans {
 	gen `y'_e_n=`y'_e_tot/`y'_n_tot
 }
-
-save "$wd\data\output_merged.dta", replace
-
-/// Preliminary results:
+*We will calculate the days between ofibuses.
+gen dias_treat2_ofibus = diadepas2 - diadepas1 if !missing(diadepas2)
+gen dia_ultimo_bus = diadepas2
+replace dia_ultimo_bus = diadepas1 if asignacion!="doble ofibus"
+format dia_ultimo_bus %td
+gen dia_primer_bus = diadepas1 
+format dia_primer_bus %td
 
 gen treat=1
 replace treat=0 if asignacion=="Control" | (asignacion=="Segunda ronda formación" & wave<3)
@@ -261,6 +266,10 @@ gen treat1=1 if asignacion=="doble ofibus"
 replace treat1=0 if asignacion=="Control" | asignacion=="Segunda ronda formación" | asignacion=="Primera ronda formación"
 gen treat2=1 if asignacion=="Primera ronda formación" | (asignacion=="Segunda ronda formación" & wave>=3)
 replace treat2=0 if asignacion=="Control" | (asignacion=="Segunda ronda formación" & wave<3) | asignacion=="doble ofibus"
+
+save "$wd\data\output_merged.dta", replace
+
+/// Preliminary results:
 
 * Descriptive statistics:
 
@@ -692,7 +701,7 @@ forvalues m=1(1)`max' {
 		local ++nvars
 	}
 }
-local nvars=`nvars'/`max'
+local nvars = `nvars' / `max'
 local nvars1=`nvars'+1
 	
 forvalues m=1(1)`max' { // Note that mgourps(., pattern(.)) might have to be changed manually if different variables are selected.
@@ -875,6 +884,8 @@ merge 1:m ine asignacion using "$wd\data\output_merged.dta"
 table ine asignacion if _merge==2, zerocounts
 table ine asignacion if _merge==1, zerocounts
 restore
+
+use "$wd\data\output_merged.dta", clear
 
 preserve
 clear all
@@ -1251,7 +1262,7 @@ eststo clear
 /// Generate outcome variables per capita (per person aged >18):
 
 foreach var in $vars1 $vars2 reintegros_mean ingresos_mean traspasos_mean cheqaj_mean trans_mean rntg_caj_mean resto_caj_mean $vars7 $vars6 $vars5 clientescbk clientescbk65 {
-	gen `var'_18=`var'/(Población*(1-(menor_18/100)))
+	gen `var'_18=`var'/(población*(1-(menor_18/100)))
 }
 
 forvalues n=1/7 {
@@ -1383,6 +1394,7 @@ esttab using "${wd}\output\reg4_pc.tex", mti("\begin{tabular}[c]{@{}c@{}} Person
 
 eststo clear
 
+//Aqui toca hacer las modificaciones (Tabla11)
 local nvars=0
 foreach y in $vars5_18 {
 	eststo: reg `y' treat1 treat2 i.wave $xlist, vce(cluster ine)
@@ -1401,6 +1413,7 @@ esttab using "${wd}\output\reg41_pc.tex", mti("\begin{tabular}[c]{@{}c@{}} Perso
 
 eststo clear
 
+
 local nvars=0
 foreach y in $vars6_18 {
 	eststo: reg `y' treat1 treat2 i.wave, vce(cluster ine)
@@ -1418,6 +1431,9 @@ local nvars1=`nvars'+1
 esttab using "${wd}\output\reg5_pc.tex", mti("\begin{tabular}[c]{@{}c@{}} Cheques\\ajenos (\euro)\end{tabular}" "Transferencias (\#)" "Transferencias (\euro)" "Resto (\#)" "\begin{tabular}[c]{@{}c@{}} Personas\\atendidas (\#)\end{tabular}" "Reintegros (\#)" "Reintegros (\euro)" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\#)\end{tabular}" "\begin{tabular}[c]{@{}c@{}} Resto\\operaciones (\euro)\end{tabular}") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera por habitante >18 años (continuado) (agregado ARE+Cajero) \label{reg5pc}}\scalebox{0.75}{\begin{tabular}{l*{`nvars'}{c}}\hline\hline) postfoot(\hline\hline\\\end{tabular}}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen los mostrados en la Tabla \ref{balance}. \end{footnotesize} \end{tablenotes}\end{table})
 
 eststo clear
+
+//Aqui toca hacer las modificaciones (Tabla12 y continuacion)
+
 
 local nvars=0
 foreach y in $vars6_18 {
@@ -1451,6 +1467,9 @@ foreach y in $vars7_18 {
 esttab using "${wd}\output\reg6_pc.tex", mti("Reintegros" "Ingresos" "Traspasos" "Cheques" "Transferencias") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en medidas de inclusi\'on financiera, importe por operaci\'on (\euro/\#, agregado ARE+Cajero) por habitante >18 años \label{reg6pc}}\begin{tabular}{l*{`nvars'}{c}}\hline\hline) postfoot(\hline\hline\\\end{tabular}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen los mostrados en la Tabla \ref{balance}. \end{footnotesize} \end{tablenotes}\end{table})
 
 eststo clear
+
+//Aqui toca hacer las modificaciones (Tabla13 y continuacion)
+
 
 foreach y in $vars7_18 {
 	eststo: reg `y' treat1 treat2 i.wave $xlist, vce(cluster ine)
@@ -1569,4 +1588,3 @@ local nvars1=`nvars'+1
 esttab using "${wd}\output\reg10.tex", mti("Todos" "Todos" ">65 años" ">65 años" "Todos" "Todos" ">65 años" ">65 años") coeflabels(treat1 "Tratado (doble ofibus)" treat2 "Tratado (información)") keep(treat1 treat2) nocon nonotes b(3) se(3) replace star(* 0.10 ** 0.05 *** 0.01) scalars("r2 $ R^2$" "N $ N$" "mfe EF de mes" "controls Controles" "avg Promedio var. dep. (control)" "sd SD var. dep. (control)" "b1_sd Efecto en SD (doble ofibus)" "b2_sd Efecto en SD (información)") compress prehead(\begin{table}[H]\centering\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}\caption{Efectos preliminares en número de clientes \label{reg10}} \begin{tabular}{l*{`nvars'}{c}}\hline\hline & \multicolumn{4}{c}{Total de clientes}& \multicolumn{4}{c}{Clientes por habitantes >18 años} \\\cmidrule(lr){2-5}\cmidrule(lr){6-`nvars1'}) postfoot(\hline\hline\\\end{tabular}\begin{tablenotes}[para]\begin{footnotesize} \item Notas: Errores est\'andar agrupados en par\'entesis. * $ p<0.1$, ** $ p<0.05$, *** $ p<0.01$. Los controles incluyen los mostrados en la Tabla \ref{balance} a excepción de \textit{Clientes CaixaBank} y \textit{Clientes CaixaBank (>65 años)}. \end{footnotesize} \end{tablenotes}\end{table}) // Note that \cmidrule(lr){.} might have to be changed manually if different variables are selected.
 
 eststo clear
-
